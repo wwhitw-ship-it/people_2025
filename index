@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>短影音剪輯師成長回顧表</title>
+   
+    <!-- 引入 React 和 Tailwind (讓瀏覽器能直接執行程式) -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+   
+    <style>
+        /* 列印與 PDF 輸出專用樣式 */
+        @media print {
+            @page {
+                size: A4;
+                margin: 12mm;
+            }
+            body {
+                background: white;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+            .no-print { display: none !important; }
+            .print-break-inside-avoid { break-inside: avoid; page-break-inside: avoid; }
+            .shadow-lg, .shadow-sm {
+                box-shadow: none !important;
+                border: 1px solid #e5e7eb;
+            }
+        }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .animate-spin { animation: spin 1s linear infinite; }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans text-gray-800">
+    <div id="root"></div>
+
+
+    <script type="text/babel">
+        const { useState } = React;
+
+
+        // --- 內建圖示元件 ---
+        const IconBase = ({ children, className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>{children}</svg>
+        );
+        const Save = ({ className }) => <IconBase className={className}><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></IconBase>;
+        const Printer = ({ className }) => <IconBase className={className}><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></IconBase>;
+        const MessageSquare = ({ className }) => <IconBase className={className}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></IconBase>;
+        const Award = ({ className }) => <IconBase className={className}><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></IconBase>;
+        const Zap = ({ className }) => <IconBase className={className}><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></IconBase>;
+        const Users = ({ className }) => <IconBase className={className}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></IconBase>;
+        const CheckCircle = ({ className }) => <IconBase className={className}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></IconBase>;
+        const Calculator = ({ className }) => <IconBase className={className}><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="16" y1="14" x2="16" y2="14"/><line x1="12" y1="14" x2="12" y2="14"/><line x1="8" y1="14" x2="8" y2="14"/><line x1="16" y1="18" x2="16" y2="18"/><line x1="12" y1="18" x2="12" y2="18"/><line x1="8" y1="18" x2="8" y2="18"/></IconBase>;
+        const CloudUpload = ({ className }) => <IconBase className={className}><path d="M20.49 15a9 9 0 1 0-17.98 0 7 7 0 0 0-1.51 15H20a8 8 0 0 0 .49-16z"/><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/></IconBase>;
+        const Loader = ({ className }) => <IconBase className={`${className} animate-spin`}><path d="M21 12a9 9 0 1 1-6.219-8.56"/></IconBase>;
+        const Info = ({ className }) => <IconBase className={className}><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></IconBase>;
+
+
+        // --- 主應用程式 ---
+        const EvaluationForm = () => {
+           
+            // 🔴 🔴 🔴 如果您之後要用 Google Sheets，請把網址貼在這裡；若不用則留空即可 🔴 🔴 🔴
+            const GOOGLE_SCRIPT_URL = "";
+            // -------------------------------------------------------------
+
+
+            const [isSubmitting, setIsSubmitting] = useState(false);
+            const [formData, setFormData] = useState({
+                employeeName: '',
+                department: '影音內容部',
+                role: '短影音剪輯師',
+                date: new Date().toISOString().split('T')[0],
+                skills_software: 0, skills_storytelling: 0, skills_aesthetic: 0, skills_trend: 0,
+                eff_speed: 0, eff_precision: 0, eff_file_management: 0, eff_revision: 0,
+                culture_comm: 0, culture_proactive: 0, culture_growth: 0, culture_responsibility: 0,
+                feedback_highlight: '', feedback_challenges: '', feedback_goals: '',
+            });
+
+
+            const [viewMode, setViewMode] = useState('edit');
+
+
+            const handleInputChange = (e) => {
+                const { name, value } = e.target;
+                setFormData(prev => ({ ...prev, [name]: value }));
+            };
+
+
+            const handleScoreChange = (name, value) => {
+                setFormData(prev => ({ ...prev, [name]: value }));
+            };
+
+
+            const calculateStats = () => {
+                const scores = [
+                    formData.skills_software, formData.skills_storytelling, formData.skills_aesthetic, formData.skills_trend,
+                    formData.eff_speed, formData.eff_precision, formData.eff_file_management, formData.eff_revision,
+                    formData.culture_comm, formData.culture_proactive, formData.culture_growth, formData.culture_responsibility
+                ];
+                const totalScore = scores.reduce((a, b) => a + parseInt(b || 0), 0);
+                const filledCount = scores.filter(s => s > 0).length;
+                const totalQuestions = 12;
+                const maxScore = totalQuestions * 5;
+                const averageScore = filledCount === 0 ? 0 : (totalScore / filledCount).toFixed(1);
+                return { totalScore, maxScore, averageScore, filledCount, totalQuestions };
+            };
+
+
+            const stats = calculateStats();
+
+
+            const submitToGoogleSheets = async () => {
+                if (!GOOGLE_SCRIPT_URL) {
+                    alert("⚠️ 目前尚未設定 Google Sheets 連動。\n\n若您僅需要「轉存 PDF」功能，請直接點選旁邊的「列印 / 轉 PDF」按鈕即可！\n\n(若要啟用雲端功能，請參考教學取得網址並填入程式碼中)");
+                    return;
+                }
+                if (!formData.employeeName) { alert("請填寫姓名後再上傳！"); return; }
+                if (window.confirm(`確定要上傳 ${formData.employeeName} 的自評資料嗎？`)) {
+                    setIsSubmitting(true);
+                    try {
+                        const payload = {
+                            ...formData,
+                            totalScore: stats.totalScore,
+                            averageScore: stats.averageScore,
+                            submittedAt: new Date().toLocaleString()
+                        };
+                        await fetch(GOOGLE_SCRIPT_URL, {
+                            method: "POST",
+                            body: JSON.stringify(payload),
+                            headers: { "Content-Type": "text/plain;charset=utf-8" },
+                            mode: 'no-cors'
+                        });
+                        alert("🎉 資料上傳成功！");
+                    } catch (error) {
+                        console.error("Upload Error:", error);
+                        alert("上傳失敗，請稍後再試。");
+                    } finally {
+                        setIsSubmitting(false);
+                    }
+                }
+            };
+
+
+            // 評分標準說明元件 (Scoring Legend)
+            const ScoringLegend = () => (
+                <div className="mb-8 p-4 bg-gray-50 rounded-lg border border-gray-200 print-break-inside-avoid">
+                    <h3 className="flex items-center gap-2 font-bold text-gray-700 mb-3 text-sm uppercase tracking-wide">
+                        <Info className="w-4 h-4" /> 評分標準說明
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-5 gap-2 text-xs md:text-sm">
+                        <div className="p-2 rounded bg-blue-100 border border-blue-200 text-blue-800">
+                            <span className="font-bold block text-lg">5 分</span>
+                            <span className="font-medium">表現優異</span>
+                            <p className="opacity-80 text-xs mt-1">遠超標準，成為典範</p>
+                        </div>
+                        <div className="p-2 rounded bg-green-100 border border-green-200 text-green-800">
+                            <span className="font-bold block text-lg">4 分</span>
+                            <span className="font-medium">表現良好</span>
+                            <p className="opacity-80 text-xs mt-1">高於標準，品質穩定</p>
+                        </div>
+                        <div className="p-2 rounded bg-gray-100 border border-gray-200 text-gray-800">
+                            <span className="font-bold block text-lg">3 分</span>
+                            <span className="font-medium">達到標準</span>
+                            <p className="opacity-80 text-xs mt-1">符合預期，獨立完成</p>
+                        </div>
+                        <div className="p-2 rounded bg-orange-50 border border-orange-200 text-orange-800">
+                            <span className="font-bold block text-lg">2 分</span>
+                            <span className="font-medium">需改善</span>
+                            <p className="opacity-80 text-xs mt-1">稍微不足，需部分調整</p>
+                        </div>
+                        <div className="p-2 rounded bg-red-50 border border-red-200 text-red-800">
+                            <span className="font-bold block text-lg">1 分</span>
+                            <span className="font-medium">未達標</span>
+                            <p className="opacity-80 text-xs mt-1">表現不足，需大幅指導</p>
+                        </div>
+                    </div>
+                </div>
+            );
+
+
+            const categories = [
+                {
+                    id: 'part1',
+                    title: '一、專業技能與網感 (Professional Skills)',
+                    icon: <Zap className="w-5 h-5 text-yellow-500" />,
+                    desc: '評估技術硬實力與對內容的敏銳度',
+                    items: [
+                        { id: 'skills_software', label: '軟體駕馭與 AI 賦能', sub: '是否願意嘗試及運用軟體工具或 AI工具，為創作加分' },
+                        { id: 'skills_storytelling', label: '短影音敘事力', sub: '精準掌握黃金 3 秒 (Hook)，節奏引人入勝' },
+                        { id: 'skills_aesthetic', label: '視覺美感與包裝', sub: '字幕與特效具備設計感，精準傳遞品牌質感' },
+                        { id: 'skills_trend', label: '趨勢敏銳度 (網感)', sub: '對流行趨勢高敏感，能將新梗轉化為養分' }
+                    ]
+                },
+                {
+                    id: 'part2',
+                    title: '二、工作效能與品質 (Efficiency & Quality)',
+                    icon: <CheckCircle className="w-5 h-5 text-green-500" />,
+                    desc: '評估產出節奏與細節控管',
+                    items: [
+                        { id: 'eff_speed', label: '產出節奏與效能', sub: '在時程內穩定產出，展現良好時間管理' },
+                        { id: 'eff_precision', label: '成品精準度', sub: '對細節有高標準，確保高品質輸出 (低錯字/低失誤)' },
+                        { id: 'eff_file_management', label: '檔案管理邏輯', sub: '具備清晰歸檔習慣，為團隊建立良好資產庫' },
+                        { id: 'eff_revision', label: '需求對焦與迭代', sub: '能快速抓準優化方向，讓作品越改越好' }
+                    ]
+                },
+                {
+                    id: 'part3',
+                    title: '三、團隊協作與文化 (Culture & Growth)',
+                    icon: <Users className="w-5 h-5 text-blue-500" />,
+                    desc: '評估溝通模式與成長心態',
+                    items: [
+                        { id: 'culture_comm', label: '溝通與迭代心態', sub: '樂於接收建議，將回饋視為升級機會' },
+                        { id: 'culture_proactive', label: '主動性與解決力', sub: '遇到挑戰時，展現主動尋找解法的熱忱' },
+                        { id: 'culture_growth', label: '成長型思維', sub: '樂於分享新知，願意跳出舒適圈嘗試新風格' },
+                        { id: 'culture_responsibility', label: '當責與協作彈性', sub: '對作品高度負責，並能彈性支援團隊' }
+                    ]
+                }
+            ];
+
+
+            const RatingInput = ({ value, onChange, label, sub }) => (
+                <div className="mb-6 pb-4 border-b border-gray-100 last:border-0 print-break-inside-avoid">
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-2">
+                        <div className="mb-2 md:mb-0 max-w-lg">
+                            <h4 className="font-semibold text-gray-800 text-lg">{label}</h4>
+                            <p className="text-gray-500 text-sm">{sub}</p>
+                        </div>
+                        <div className="flex gap-1 bg-gray-50 p-1 rounded-lg">
+                            {[1, 2, 3, 4, 5].map((score) => (
+                                <button
+                                    key={score}
+                                    onClick={() => onChange(score)}
+                                    className={`w-10 h-10 rounded-md flex items-center justify-center transition-all font-bold ${
+                                        value >= score
+                                            ? 'bg-blue-600 text-white shadow-md scale-105'
+                                            : 'text-gray-400 hover:bg-gray-200'
+                                    }`}
+                                >
+                                    {score}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            );
+
+
+            const SectionHeader = ({ icon, title, desc }) => (
+                <div className="flex items-center gap-3 mb-6 p-3 bg-blue-50 rounded-lg border-l-4 border-blue-500 print-break-inside-avoid">
+                    {icon}
+                    <div>
+                        <h3 className="font-bold text-xl text-blue-900">{title}</h3>
+                        <p className="text-blue-600 text-sm">{desc}</p>
+                    </div>
+                </div>
+            );
+
+
+            // 預覽與列印專用頁面 (Preview Sheet)
+            const PreviewSheet = () => (
+                <div className="bg-white p-8 max-w-4xl mx-auto shadow-none print:shadow-none print:w-full print:p-0">
+                    {/* Header */}
+                    <div className="flex justify-between items-end border-b-2 border-blue-600 pb-4 mb-6">
+                        <div>
+                            <h1 className="text-3xl font-bold text-gray-900">自我成長回顧表</h1>
+                            <p className="text-gray-500 mt-1">短影音剪輯師｜試用期自評報告</p>
+                        </div>
+                        <div className="flex gap-6 text-right">
+                            <div>
+                                <div className="text-xs text-gray-500 uppercase font-bold tracking-wider">自評總分</div>
+                                <div className="text-3xl font-bold text-gray-800">
+                                    <span className="text-blue-600">{stats.totalScore}</span>
+                                    <span className="text-gray-400 text-xl font-normal"> / {stats.maxScore}</span>
+                                </div>
+                            </div>
+                            <div className="border-l border-gray-300 pl-6">
+                                <div className="text-xs text-gray-500 uppercase font-bold tracking-wider">自評平均</div>
+                                <div className="text-3xl font-bold text-blue-600">{stats.averageScore}</div>
+                            </div>
+                        </div>
+                    </div>
+
+
+                    {/* Basic Info */}
+                    <div className="grid grid-cols-2 gap-6 mb-6 bg-gray-50 p-4 rounded-lg print:bg-gray-50 print:border print:border-gray-200">
+                        <div>
+                            <span className="text-gray-500 text-sm block">姓名</span>
+                            <span className="font-medium text-lg">{formData.employeeName || '未填寫'}</span>
+                        </div>
+                        <div>
+                            <span className="text-gray-500 text-sm block">填表日期</span>
+                            <span className="font-medium text-lg">{formData.date}</span>
+                        </div>
+                    </div>
+
+
+                    {/* Rubric Legend (Shown in Preview) */}
+                    <ScoringLegend />
+
+
+                    {/* Scores */}
+                    {categories.map((cat) => (
+                        <div key={cat.id} className="mb-8 print-break-inside-avoid">
+                            <h3 className="text-lg font-bold text-gray-800 mb-4 border-b border-gray-200 pb-2">{cat.title}</h3>
+                            <table className="w-full text-sm">
+                                <thead>
+                                    <tr className="text-left text-gray-500">
+                                        <th className="pb-2 w-2/3">評核項目</th>
+                                        <th className="pb-2 text-right">自評分數</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {cat.items.map((item) => (
+                                        <tr key={item.id} className="border-b border-gray-100 last:border-0">
+                                            <td className="py-2 pr-4">
+                                                <div className="font-medium text-gray-800">{item.label}</div>
+                                                <div className="text-xs text-gray-500">{item.sub}</div>
+                                            </td>
+                                            <td className="py-2 text-right font-bold text-blue-600 text-lg">
+                                                {formData[item.id] > 0 ? formData[item.id] : '-'}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    ))}
+
+
+                    {/* Qualitative */}
+                    <div className="mb-8 print-break-inside-avoid">
+                        <h3 className="text-lg font-bold text-gray-800 mb-4 border-b border-gray-200 pb-2">四、自我回顧 (Self Reflection)</h3>
+                        <div className="bg-blue-50 p-6 rounded-lg print:bg-blue-50 print:border print:border-blue-100">
+                            <div className="mb-6">
+                                <p className="text-sm text-blue-800 font-bold uppercase mb-2">✨ Highlight 時刻</p>
+                                <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">{formData.feedback_highlight || '（未填寫）'}</p>
+                            </div>
+                            <div className="mb-6">
+                                <p className="text-sm text-blue-800 font-bold uppercase mb-2">🚧 卡關與挑戰</p>
+                                <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">{formData.feedback_challenges || '（未填寫）'}</p>
+                            </div>
+                            <div>
+                                <p className="text-sm text-blue-800 font-bold uppercase mb-2">🎯 未來角色探索</p>
+                                <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">{formData.feedback_goals || '（未填寫）'}</p>
+                            </div>
+                        </div>
+                    </div>
+
+
+                    {/* Signature */}
+                    <div className="mt-12 pt-8 border-t-2 border-gray-200 print-break-inside-avoid">
+                        <div className="grid grid-cols-2 gap-12">
+                           <div>
+                             <p className="text-sm text-gray-500 mb-12">夥伴簽名：</p>
+                             <div className="border-b border-gray-300"></div>
+                           </div>
+                           <div>
+                             <p className="text-sm text-gray-500 mb-12">主管簽核 / 日期：</p>
+                             <div className="border-b border-gray-300"></div>
+                           </div>
+                        </div>
+                    </div>
+                </div>
+            );
+
+
+            // 主畫面 (Main Edit Screen)
+            return (
+                <div className="min-h-screen bg-gray-100 font-sans">
+                    {/* Navbar */}
+                    <div className="sticky top-0 z-50 bg-white border-b shadow-sm px-4 md:px-6 py-3 flex flex-col md:flex-row justify-between items-center no-print gap-3">
+                        <div className="flex items-center gap-2">
+                            <Award className="text-blue-600" />
+                            <h1 className="font-bold text-gray-800 hidden md:block">Self Review <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full ml-2">Video Editor</span></h1>
+                        </div>
+
+
+                        <div className="hidden md:flex items-center gap-4 bg-gray-50 px-3 py-1 rounded-lg border border-gray-200">
+                            <div className="flex items-center gap-2 text-sm text-gray-600">
+                                <Calculator size={14} />
+                                <span>自評總分: <b className="text-blue-600">{stats.totalScore}</b></span>
+                            </div>
+                            <div className="w-px h-4 bg-gray-300"></div>
+                            <div className="text-sm text-gray-600">
+                                <span>平均: <b className="text-blue-600">{stats.averageScore}</b></span>
+                            </div>
+                        </div>
+
+
+                        <div className="flex gap-2">
+                            {viewMode === 'edit' ? (
+                                <button
+                                    onClick={() => setViewMode('preview')}
+                                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm text-sm font-medium"
+                                >
+                                    <Save size={18} />
+                                    <span className="hidden md:inline">預覽報告</span>
+                                    <span className="md:hidden">預覽</span>
+                                </button>
+                            ) : (
+                                <>
+                                    <button
+                                        onClick={submitToGoogleSheets}
+                                        disabled={isSubmitting}
+                                        className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors shadow-sm text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        {isSubmitting ? <Loader size={18} className="animate-spin" /> : <CloudUpload size={18} />}
+                                        <span className="hidden md:inline">{isSubmitting ? '上傳中...' : '上傳雲端'}</span>
+                                        <span className="md:hidden">上傳</span>
+                                    </button>
+
+
+                                    <button
+                                        onClick={() => setViewMode('edit')}
+                                        className="flex items-center gap-2 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors text-sm font-medium"
+                                    >
+                                        返回編輯
+                                    </button>
+                                   
+                                    <button
+                                        onClick={() => window.print()}
+                                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm text-sm font-medium"
+                                    >
+                                        <Printer size={18} />
+                                        <span className="hidden md:inline">列印 / 轉 PDF</span>
+                                        <span className="md:hidden">PDF</span>
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                    </div>
+
+
+                    {viewMode === 'preview' ? (
+                        <div className="py-10 print:p-0">
+                            <PreviewSheet />
+                        </div>
+                    ) : (
+                        <div className="max-w-3xl mx-auto py-10 px-4 md:px-0">
+                            <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+                                <div className="bg-blue-600 p-8 text-white">
+                                    <h2 className="text-2xl font-bold mb-2">夥伴自我成長回顧</h2>
+                                    <p className="opacity-90 text-sm">請放鬆心情填寫，這是關於你的試用期成長回顧。</p>
+                                </div>
+
+
+                                <div className="p-8">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">夥伴姓名</label>
+                                            <input type="text" name="employeeName" value={formData.employeeName} onChange={handleInputChange} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all" placeholder="請輸入姓名" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">填表日期</label>
+                                            <input type="date" name="date" value={formData.date} onChange={handleInputChange} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                                        </div>
+                                    </div>
+
+
+                                    {/* 在填寫頁面加入評分標準 */}
+                                    <ScoringLegend />
+
+
+                                    {categories.map((cat) => (
+                                        <div key={cat.id} className="mb-10">
+                                            <SectionHeader icon={cat.icon} title={cat.title} desc={cat.desc} />
+                                            {cat.items.map((item) => (
+                                                <RatingInput key={item.id} label={item.label} sub={item.sub} value={formData[item.id]} onChange={(val) => handleScoreChange(item.id, val)} />
+                                            ))}
+                                        </div>
+                                    ))}
+
+
+                                    <div className="mb-10">
+                                        <SectionHeader icon={<MessageSquare className="w-5 h-5 text-purple-500" />} title="四、雙向對話 (Feedback Loop)" desc="真誠的對話是成長的基石" />
+                                        <div className="space-y-6">
+                                            <div className="bg-blue-50 p-6 rounded-xl border border-blue-100">
+                                                <h4 className="font-bold text-blue-800 mb-4 flex items-center gap-2"><span className="bg-blue-200 p-1 rounded text-xs">必填</span> 自我回顧</h4>
+                                                <div className="space-y-4">
+                                                    <div>
+                                                        <label className="block text-sm font-bold text-gray-700 mb-1">✨ 亮點回顧：這段時間，你最喜歡或覺得有進步的一次產出？</label>
+                                                        <textarea name="feedback_highlight" value={formData.feedback_highlight} onChange={handleInputChange} rows="3" className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="不用很有壓力！可以是學會了一個新特效、剪了一支節奏很順的片..."></textarea>
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-sm font-bold text-gray-700 mb-1">🚧 卡關與挑戰：覺得比較費力的地方？</label>
+                                                        <textarea name="feedback_challenges" value={formData.feedback_challenges} onChange={handleInputChange} rows="3" className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="例如：素材搜尋花太多時間、特效軟體還不熟..."></textarea>
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-sm font-bold text-gray-700 mb-1">🎯 未來角色探索：半年後的你，希望自己長成什麼樣子？</label>
+                                                        <textarea name="feedback_goals" value={formData.feedback_goals} onChange={handleInputChange} rows="3" className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="不用侷限職稱！例如：想更能掌握企劃邏輯、想嘗試帶領專案..."></textarea>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+
+                                    <div className="flex justify-end pt-6 border-t">
+                                        <button onClick={() => setViewMode('preview')} className="px-8 py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg hover:bg-blue-700 transform hover:-translate-y-1 transition-all flex items-center gap-2">
+                                            <Save size={20} />
+                                            儲存並預覽報告
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="text-center mt-8 text-gray-400 text-sm no-print">本系統內容僅供內部自評使用。</div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<EvaluationForm />);
+    </script>
+</body>
+</html>
+
